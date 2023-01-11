@@ -13,8 +13,11 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -516,7 +519,7 @@ public class OracleConnection extends JdbcConnection {
     public Optional<OffsetDateTime> getScnToTimestamp(Scn scn) throws SQLException {
         try {
             return queryAndMap("SELECT scn_to_timestamp('" + scn + "') FROM DUAL", rs -> rs.next()
-                    ? Optional.of(rs.getObject(1, OffsetDateTime.class))
+                    ? Optional.of(getOffsetTime(rs))
                     : Optional.empty());
         }
         catch (SQLException e) {
@@ -529,5 +532,22 @@ public class OracleConnection extends JdbcConnection {
             // Any other SQLException should be thrown
             throw e;
         }
+    }
+
+    private OffsetDateTime getOffsetTime(ResultSet rs) {
+        ZoneOffset offset = null;
+        try {
+            offset = ZoneId.systemDefault()
+                    .getRules()
+                    .getOffset(new Date(rs.getTimestamp(1)
+                            .getTime()).toInstant());
+            return new Date(rs.getTimestamp(1)
+                    .getTime()).toInstant()
+                            .atOffset(offset);
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+
     }
 }

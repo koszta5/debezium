@@ -14,8 +14,11 @@ import java.text.DecimalFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -377,7 +380,13 @@ public class LogMinerStreamingChangeEventSource implements StreamingChangeEventS
      * @throws SQLException if a database exception occurred
      */
     private OffsetDateTime getDatabaseSystemTime(OracleConnection connection) throws SQLException {
-        return connection.singleOptionalValue("SELECT SYSTIMESTAMP FROM DUAL", rs -> rs.getObject(1, OffsetDateTime.class));
+        return connection.singleOptionalValue("SELECT SYSTIMESTAMP FROM DUAL", rs -> {
+            ZoneOffset offset = ZoneId.systemDefault()
+                    .getRules()
+                    .getOffset(new Date(rs.getTimestamp(1)
+                            .getTime()).toInstant());
+            return new Date(rs.getTimestamp(1).getTime()).toInstant().atOffset(offset);
+        });
     }
 
     /**

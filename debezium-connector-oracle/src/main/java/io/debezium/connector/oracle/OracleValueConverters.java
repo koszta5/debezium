@@ -545,11 +545,11 @@ public class OracleValueConverters extends JdbcValueConverters {
             }
             else if (data instanceof TIMESTAMPTZ) {
                 final TIMESTAMPTZ ts = (TIMESTAMPTZ) data;
-                data = ZonedDateTime.ofInstant(ts.timestampValue(connection.connection()).toInstant(), ts.getTimeZone().toZoneId());
+                data = ts.timestampValue();
             }
             else if (data instanceof TIMESTAMPLTZ) {
                 final TIMESTAMPLTZ ts = (TIMESTAMPLTZ) data;
-                data = ZonedDateTime.ofInstant(ts.timestampValue(connection.connection()).toInstant(), ZoneId.systemDefault()).withZoneSameInstant(ZoneOffset.UTC);
+                data = ts.timestampValue();
             }
         }
         catch (SQLException e) {

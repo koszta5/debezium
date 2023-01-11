@@ -7,9 +7,10 @@
 	<relativePath>../debezium-parent/pom.xml</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
-    <artifactId>debezium-connector-oracle</artifactId>
+    <artifactId>debezium-connector-oracle-jdbc40</artifactId>
     <name>Debezium Connector for Oracle</name>
     <packaging>jar</packaging>
+    <version>1.7.1.Final</version>
 
     <dependencies>
         <dependency>
@@ -31,8 +32,9 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>com.oracle.database.jdbc</groupId>
-            <artifactId>ojdbc8</artifactId>
+            <groupId>com.oracle</groupId>
+            <artifactId>ojdbc6</artifactId>
+            <version>11.2.0.4-exacc</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -185,19 +187,6 @@
     Define several useful profiles
     -->
     <profiles>
-        <profile>
-            <id>xstream-dependency</id>
-            <activation>
-                <activeByDefault>true</activeByDefault>
-            </activation>
-            <dependencies>
-                <dependency>
-                    <groupId>com.oracle.instantclient</groupId>
-                    <artifactId>xstreams</artifactId>
-                    <scope>provided</scope>
-                </dependency>
-            </dependencies>
-        </profile>
         <profile>
             <id>assembly</id>
             <activation>

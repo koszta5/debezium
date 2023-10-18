@@ -55,6 +55,9 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
     private final OracleOffsetContext offsetContext;
     private final EventDispatcher<OraclePartition, TableId> dispatcher;
 
+    private InMemoryPendingTransactionsCache inMemoryPendingTransactionsCache = new InMemoryPendingTransactionsCache();
+
+
     public AbstractInfinispanLogMinerEventProcessor(ChangeEventSourceContext context,
                                                     OracleConnectorConfig connectorConfig,
                                                     OracleConnection jdbcConnection,
@@ -115,6 +118,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
                     if (event != null && event.getRowId().equals(row.getRowId())) {
                         Loggings.logDebugAndTraceRecord(LOGGER, row, "Undo change on table '{}' applied to transaction '{}'", row.getTableId(), eventKey);
                         getEventCache().remove(eventKey);
+                        inMemoryPendingTransactionsCache.remove(row.getTransactionId());
                         return;
                     }
                 }
@@ -135,6 +139,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
                 if (event != null && event.getRowId().equals(row.getRowId())) {
                     LOGGER.debug("Undo applied for event {}.", event);
                     getEventCache().remove(eventKey);
+                    inMemoryPendingTransactionsCache.remove(row.getTransactionId());
                     return;
                 }
             }
@@ -275,7 +280,8 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
                 // Add new event at eventId offset
                 LOGGER.trace("Transaction {}, adding event reference at key {}", transactionId, eventKey);
                 getEventCache().put(eventKey, eventSupplier.get());
-                metrics.calculateLagFromSource(row.getChangeTime());
+                metrics.calculateLagFromSource(row.getChangeTime());                
+                inMemoryPendingTransactionsCache.put(transaction.getTransactionId());
             }
             // When using Infinispan, this extra put is required so that the state is properly synchronized
             getTransactionCache().put(transactionId, transaction);
@@ -288,10 +294,8 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
 
     @Override
     protected int getTransactionEventCount(InfinispanTransaction transaction) {
-        // todo: implement indexed keys when ISPN supports them
-        try (Stream<String> stream = getEventCache().keySet().stream()) {
-            return (int) stream.filter(k -> k.startsWith(transaction.getTransactionId() + "-")).count();
-        }
+    	//TODO this may not work after restart if ISPN is reloaded
+        return inMemoryPendingTransactionsCache.getNumPending(transaction.getTransactionId());
     }
 
     @Override
@@ -397,6 +401,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
         for (int i = 0; i < transaction.getNumberOfEvents(); ++i) {
             getEventCache().remove(transaction.getEventId(i));
         }
+        inMemoryPendingTransactionsCache.remove(transaction.getTransactionId());
     }
 
     /**

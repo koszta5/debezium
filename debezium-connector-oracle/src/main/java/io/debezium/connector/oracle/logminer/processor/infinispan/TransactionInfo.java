@@ -1,17 +1,17 @@
 package io.debezium.connector.oracle.logminer.processor.infinispan;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 public class TransactionInfo {
 
     private String scn;
-    private LocalDateTime ts;
+    private Instant ts;
 
     public TransactionInfo(String scn) {
-        this(scn, LocalDateTime.now());
+        this(scn, Instant.now());
     }
 
-    public TransactionInfo(String scn, LocalDateTime ts) {
+    public TransactionInfo(String scn, Instant ts) {
         this.scn = scn;
         this.ts = ts;
     }
@@ -20,7 +20,7 @@ public class TransactionInfo {
         return scn;
     }
 
-    public LocalDateTime getTs() {
+    public Instant getTs() {
         return ts;
     }
 }

@@ -9,6 +9,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
@@ -232,7 +233,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
     @Override
     protected void finalizeTransactionCommit(String transactionId, Scn commitScn) {
         // cache recently committed transactions by transaction id
-        getProcessedTransactionsCache().put(transactionId, commitScn.toString());
+        getProcessedTransactionsCache().put(transactionId, new TransactionInfo(commitScn.toString()));
     }
 
     @Override
@@ -242,7 +243,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
             removeEventsWithTransaction(transaction);
             getTransactionCache().remove(transactionId);
         }
-        getProcessedTransactionsCache().put(transactionId, rollbackScn.toString());
+        getProcessedTransactionsCache().put(transactionId, new TransactionInfo(rollbackScn.toString()));
     }
 
     @Override
@@ -318,8 +319,13 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
         }
 
         if (!minCacheScn.isNull()) {
-            getProcessedTransactionsCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getValue()).compareTo(minCacheScn) < 0);
+            getProcessedTransactionsCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getValue().getScn()).compareTo(minCacheScn) < 0);
             getSchemaChangesCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getKey()).compareTo(minCacheScn) < 0);
+
+            LocalDateTime delay = LocalDateTime.now().minusHours(1);
+            long count = getProcessedTransactionsCache().entrySet().stream().filter(entry -> entry.getValue().getTs().isBefore(delay)).count();
+            LOGGER.warn("Found {} old items in processed transaction list. Removing them.", count);
+            getProcessedTransactionsCache().entrySet().removeIf(entry -> entry.getValue().getTs().isBefore(delay));
         }
         else {
             getProcessedTransactionsCache().clear();

@@ -60,7 +60,7 @@ public class EmbeddedInfinispanLogMinerEventProcessor extends AbstractInfinispan
 
     private final Cache<String, InfinispanTransaction> transactionCache;
     private final Cache<String, LogMinerEvent> eventCache;
-    private final Cache<String, String> processedTransactionsCache;
+    private final Cache<String, TransactionInfo> processedTransactionsCache;
     private final Cache<String, String> schemaChangesCache;
 
     public EmbeddedInfinispanLogMinerEventProcessor(ChangeEventSourceContext context,
@@ -121,7 +121,7 @@ public class EmbeddedInfinispanLogMinerEventProcessor extends AbstractInfinispan
     }
 
     @Override
-    public BasicCache<String, String> getProcessedTransactionsCache() {
+    public BasicCache<String, TransactionInfo> getProcessedTransactionsCache() {
         return processedTransactionsCache;
     }
 

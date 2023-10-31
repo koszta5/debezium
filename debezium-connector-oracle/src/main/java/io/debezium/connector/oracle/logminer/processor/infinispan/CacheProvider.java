@@ -85,5 +85,5 @@ public interface CacheProvider extends AutoCloseable {
      *
      * @return the processed transactions cache, never {@code null}
      */
-    BasicCache<String, String> getProcessedTransactionsCache();
+    BasicCache<String, TransactionInfo> getProcessedTransactionsCache();
 }

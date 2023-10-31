@@ -65,7 +65,7 @@ public class RemoteInfinispanLogMinerEventProcessor extends AbstractInfinispanLo
 
     private final RemoteCache<String, InfinispanTransaction> transactionCache;
     private final RemoteCache<String, LogMinerEvent> eventCache;
-    private final RemoteCache<String, String> processedTransactionsCache;
+    private final RemoteCache<String, TransactionInfo> processedTransactionsCache;
     private final RemoteCache<String, String> schemaChangesCache;
 
     public RemoteInfinispanLogMinerEventProcessor(ChangeEventSourceContext context,
@@ -132,7 +132,7 @@ public class RemoteInfinispanLogMinerEventProcessor extends AbstractInfinispanLo
     }
 
     @Override
-    public BasicCache<String, String> getProcessedTransactionsCache() {
+    public BasicCache<String, TransactionInfo> getProcessedTransactionsCache() {
         return processedTransactionsCache;
     }
 

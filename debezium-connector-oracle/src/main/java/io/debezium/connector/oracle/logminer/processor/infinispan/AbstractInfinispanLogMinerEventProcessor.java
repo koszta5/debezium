@@ -322,10 +322,12 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
             getProcessedTransactionsCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getValue().getScn()).compareTo(minCacheScn) < 0);
             getSchemaChangesCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getKey()).compareTo(minCacheScn) < 0);
 
-            Instant delay = Instant.now().minusSeconds(60 * 60);
-            long count = getProcessedTransactionsCache().entrySet().stream().filter(entry -> entry.getValue().getTs().isBefore(delay)).count();
-            LOGGER.warn("Found {} old items in processed transaction list. Removing them.", count);
-            getProcessedTransactionsCache().entrySet().removeIf(entry -> entry.getValue().getTs().isBefore(delay));
+            Instant expireTs = Instant.now().minusSeconds(60 * 60);
+            long count = getProcessedTransactionsCache().entrySet().stream().filter(entry -> entry.getValue().getTs().isBefore(expireTs)).count();
+            if (count > 0 ) {
+                LOGGER.warn("Found {} expired items in processed transaction list. Removing them.", count);
+                getProcessedTransactionsCache().entrySet().removeIf(entry -> entry.getValue().getTs().isBefore(expireTs));
+            }
         }
         else {
             getProcessedTransactionsCache().clear();

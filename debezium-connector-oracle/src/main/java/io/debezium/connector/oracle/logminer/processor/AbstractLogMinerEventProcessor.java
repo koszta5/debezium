@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,10 +33,10 @@ import io.debezium.connector.oracle.OracleDatabaseSchema;
 import io.debezium.connector.oracle.OracleOffsetContext;
 import io.debezium.connector.oracle.OraclePartition;
 import io.debezium.connector.oracle.OracleSchemaChangeEventEmitter;
-import io.debezium.connector.oracle.OracleStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.Scn;
 import io.debezium.connector.oracle.logminer.LogMinerChangeRecordEmitter;
 import io.debezium.connector.oracle.logminer.LogMinerQueryBuilder;
+import io.debezium.connector.oracle.logminer.LogMinerStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.logminer.events.DmlEvent;
 import io.debezium.connector.oracle.logminer.events.EventType;
 import io.debezium.connector.oracle.logminer.events.LobEraseEvent;
@@ -83,7 +84,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
     private final OraclePartition partition;
     private final OracleOffsetContext offsetContext;
     private final EventDispatcher<OraclePartition, TableId> dispatcher;
-    private final OracleStreamingChangeEventSourceMetrics metrics;
+    private final LogMinerStreamingChangeEventSourceMetrics metrics;
     private final LogMinerDmlParser dmlParser;
     private final SelectLobParser selectLobParser;
     private final XmlBeginParser xmlBeginParser;
@@ -104,7 +105,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                                           OraclePartition partition,
                                           OracleOffsetContext offsetContext,
                                           EventDispatcher<OraclePartition, TableId> dispatcher,
-                                          OracleStreamingChangeEventSourceMetrics metrics) {
+                                          LogMinerStreamingChangeEventSourceMetrics metrics) {
         this.context = context;
         this.connectorConfig = connectorConfig;
         this.schema = schema;
@@ -213,7 +214,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
 
             Instant queryStart = Instant.now();
             try (ResultSet resultSet = statement.executeQuery()) {
-                metrics.setLastDurationOfBatchCapturing(Duration.between(queryStart, Instant.now()));
+                metrics.setLastDurationOfFetchQuery(Duration.between(queryStart, Instant.now()));
 
                 Instant startProcessTime = Instant.now();
                 processResults(this.partition, resultSet);
@@ -234,16 +235,18 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                 LOGGER.debug("Processed in {} ms. Lag: {}. Offset SCN: {}, Offset Commit SCN: {}, Active Transactions: {}, Sleep: {}",
                         totalTime.toMillis(), metrics.getLagFromSourceInMilliseconds(), offsetContext.getScn(),
                         offsetContext.getCommitScn(), metrics.getNumberOfActiveTransactions(),
-                        metrics.getMillisecondToSleepBetweenMiningQuery());
+                        metrics.getSleepTimeInMilliseconds());
 
-                if (metrics.getNumberOfActiveTransactions() > 0) {
-                    LOGGER.debug("All active transactions: {}",
-                            getTransactionCache().values().stream()
-                                    .map(t -> t.getTransactionId() + " (" + t.getStartScn() + ")")
-                                    .collect(Collectors.joining(",")));
+                if (metrics.getNumberOfActiveTransactions() > 0 && LOGGER.isDebugEnabled()) {
+                    // This is wrapped in try-with-resources specifically for Infinispan performance
+                    try (Stream<T> stream = getTransactionCache().values().stream()) {
+                        LOGGER.debug("All active transactions: {}",
+                                stream.map(t -> t.getTransactionId() + " (" + t.getStartScn() + ")")
+                                        .collect(Collectors.joining(",")));
+                    }
                 }
 
-                metrics.addProcessedRows(counters.rows);
+                metrics.setLastProcessedRowsCount(counters.rows);
                 return calculateNewStartScn(endScn, offsetContext.getCommitScn().getMaxCommittedScn());
             }
         }
@@ -390,7 +393,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         final T transaction = getTransactionCache().get(transactionId);
         if (transaction == null && !isRecentlyProcessed(transactionId)) {
             getTransactionCache().put(transactionId, createTransaction(row));
-            metrics.setActiveTransactions(getTransactionCache().size());
+            metrics.setActiveTransactionCount(getTransactionCache().size());
         }
         else if (transaction != null && !isRecentlyProcessed(transactionId)) {
             LOGGER.trace("Transaction {} is not yet committed and START event detected.", transactionId);
@@ -427,13 +430,12 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         final Scn smallestScn;
         if (oldestTransaction.isPresent()) {
             smallestScn = oldestTransaction.get().getStartScn();
-            metrics.setOldestScnAge(oldestTransaction.get().getChangeTime());
+            metrics.setOldestScnDetails(smallestScn, oldestTransaction.get().getChangeTime());
         }
         else {
             smallestScn = Scn.NULL;
-            metrics.setOldestScnAge(null);
+            metrics.setOldestScnDetails(Scn.valueOf(-1), null);
         }
-        metrics.setOldestScn(smallestScn.isNull() ? Scn.valueOf(-1) : smallestScn);
 
         final Scn commitScn = row.getScn();
         if (offsetContext.getCommitScn().hasCommitAlreadyBeenHandled(row)) {
@@ -444,7 +446,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                         transactionId, offsetContext.getCommitScn(), commitScn, lastCommittedScn);
             }
             removeTransactionAndEventsFromCache(transaction);
-            metrics.setActiveTransactions(getTransactionCache().size());
+            metrics.setActiveTransactionCount(getTransactionCache().size());
             return;
         }
 
@@ -465,7 +467,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                 // Update SCN in offset context only if processed SCN less than SCN of other transactions
                 if (smallestScn.isNull() || commitScn.compareTo(smallestScn) < 0) {
                     offsetContext.setScn(event.getScn());
-                    metrics.setOldestScn(event.getScn());
+                    metrics.setOldestScnDetails(event.getScn(), event.getChangeTime());
                 }
 
                 offsetContext.setEventScn(event.getScn());
@@ -549,15 +551,14 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
             dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
         }
 
-        metrics.calculateLagMetrics(row.getChangeTime());
+        metrics.calculateLagFromSource(row.getChangeTime());
 
         finalizeTransactionCommit(transactionId, commitScn);
         removeTransactionAndEventsFromCache(transaction);
 
-        metrics.incrementCommittedTransactions();
-        metrics.setActiveTransactions(getTransactionCache().size());
-        metrics.incrementCommittedDmlCount(dispatchedEventCount);
-        metrics.setCommittedScn(commitScn);
+        metrics.incrementCommittedTransactionCount();
+        metrics.setActiveTransactionCount(getTransactionCache().size());
+        metrics.setCommitScn(commitScn);
         metrics.setOffsetScn(offsetContext.getScn());
         metrics.setLastCommitDuration(Duration.between(start, Instant.now()));
     }
@@ -614,6 +615,13 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
     protected abstract void finalizeTransactionCommit(String transactionId, Scn commitScn);
 
     /**
+     * Returns only the first transaction id in the transaction buffer.
+     *
+     * @return the first active transaction in the buffer, or {@code null} if there is none.
+     */
+    protected abstract String getFirstActiveTransactionKey();
+
+    /**
      * Check whether the supplied username associated with the specified transaction is excluded.
      *
      * @param transaction the transaction, never {@code null}
@@ -642,8 +650,8 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         if (getTransactionCache().containsKey(row.getTransactionId())) {
             LOGGER.debug("Transaction {} was rolled back.", row.getTransactionId());
             finalizeTransactionRollback(row.getTransactionId(), row.getScn());
-            metrics.setActiveTransactions(getTransactionCache().size());
-            metrics.incrementRolledBackTransactions();
+            metrics.setActiveTransactionCount(getTransactionCache().size());
+            metrics.incrementRolledBackTransactionCount();
             metrics.addRolledBackTransactionId(row.getTransactionId());
             counters.rollbackCount++;
         }
@@ -710,7 +718,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                 advanceLowerScnBoundary = true;
             }
             else if (activeTransactions == 1) {
-                final String transactionId = getTransactionCache().keySet().iterator().next();
+                final String transactionId = getFirstActiveTransactionKey();
                 if (transactionId.equals(row.getTransactionId())) {
                     // The row's transaction is the current and only active transaction.
                     advanceLowerScnBoundary = true;
@@ -801,7 +809,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                             selectLobParser.isBinary());
                 });
 
-        metrics.incrementRegisteredDmlCount();
+        metrics.incrementTotalChangesCount();
     }
 
     /**
@@ -877,8 +885,6 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                     dmlEntry.setObjectOwner(row.getTablespaceName());
                     return new XmlBeginEvent(row, dmlEntry, xmlBeginParser.getColumnName());
                 });
-
-        metrics.incrementCommittedDmlCount(metrics.getRegisteredDmlCount());
     }
 
     private void handleXmlWrite(LogMinerEventRow row) {
@@ -1048,7 +1054,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
             return new DmlEvent(row, dmlEntry);
         });
 
-        metrics.incrementRegisteredDmlCount();
+        metrics.incrementTotalChangesCount();
     }
 
     protected void handleUnsupportedEvent(LogMinerEventRow row) {
@@ -1114,7 +1120,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         boolean result = false;
         try {
             if (resultSet.next()) {
-                metrics.addCurrentResultSetNext(Duration.between(start, Instant.now()));
+                metrics.setLastResultSetNextDuration(Duration.between(start, Instant.now()));
                 result = true;
             }
 
@@ -1251,7 +1257,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         try {
             Instant parseStart = Instant.now();
             dmlEntry = dmlParser.parse(redoSql, table);
-            metrics.addCurrentParseTime(Duration.between(parseStart, Instant.now()));
+            metrics.setLastParseTimeDuration(Duration.between(parseStart, Instant.now()));
         }
         catch (DmlParserException e) {
             String message = "DML statement couldn't be parsed." +
@@ -1296,6 +1302,14 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         }
         int length = Integer.parseInt(m.group(2));
         int offset = Integer.parseInt(m.group(3)) - 1; // Oracle uses 1-based offsets
+
+        // Double check whether Oracle may have escaped single-quotes in the SQL data.
+        // This avoids unintended truncation during the LOB merge phase during the commit
+        // logic handled by TransactionCommitConsumer.
+        if (data.contains("''")) {
+            data = data.replaceAll("''", "'");
+        }
+
         return new ParsedLobWriteSql(offset, length, data);
     }
 
@@ -1367,7 +1381,7 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
         LOGGER.warn("Transaction {} exceeds maximum allowed number of events, transaction will be abandoned.", transaction.getTransactionId());
         metrics.incrementWarningCount();
         getAndRemoveTransactionFromCache(transaction.getTransactionId());
-        metrics.incrementOversizedTransactions();
+        metrics.incrementOversizedTransactionCount();
     }
 
     /**

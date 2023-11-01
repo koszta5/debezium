@@ -70,6 +70,8 @@ Details are in the following topics:
 * xref:how-debezium-mysql-connectors-handle-database-schema-changes[]
 * xref:how-debezium-mysql-connectors-expose-database-schema-changes[]
 * xref:how-debezium-mysql-connectors-perform-database-snapshots[]
+* xref:debezium-mysql-ad-hoc-snapshots[]
+* xref:debezium-mysql-incremental-snapshots[]
 * xref:default-names-of-kafka-topics-that-receive-debezium-mysql-change-event-records[]
 
 endif::product[]
@@ -416,19 +418,30 @@ The snapshot mode is determined by the xref:mysql-property-snapshot-mode[`snapsh
 The default value of the property is `initial`.
 You can customize the way that the connector creates snapshots by changing the value of the `snapshot.mode` property.
 
+ifdef::product[]
+You can find more information about snapshots in the following sections:
+
+* xref:debezium-mysql-ad-hoc-snapshots[]
+* xref:debezium-mysql-incremental-snapshots[]
+endif::product[]
+
+
 The connector completes a series of tasks when it performs the snapshot.
 The exact steps vary with the snapshot mode and with the table locking policy that is in effect for the database.
 The {prodname} MySQL connector completes different steps when it performs an initial snapshot that uses a xref:initial-snapshot-workflow-with-global-read-lock[global read lock] or xref:initial-snapshot-workflow-with-table-level-locks[table-level locks].
 
 // Type: concept
+// ModuleID: debezium-mysql-description-of-the-workflow-for-initial-snapshots-that-use-a-global-read-lock
 [id="initial-snapshot-workflow-with-global-read-lock"]
 ==== Initial snapshots that use a global read lock
-The following workflow lists the steps that {prodname} takes to create a snapshot with a global read lock.
+
 You can customize the way that the connector creates snapshots by changing the value of the `snapshot.mode` property.
 If you configure a different snapshot mode, the connector completes the snapshot by using a modified version of this workflow.
 For information about the snapshot process in environments that do not permit global read locks, see the xref:snapshot-workflow-with-table-level-locks[snapshot workflow for table-level locks].
 
 .Default workflow that the {prodname} MySQL connector uses to perform an initial snapshot with a global read lock
+The following table shows the steps in the workflow that {prodname} follows to create a snapshot with a global read lock.
+
 [cols="1a,9a",options="header",subs="+attributes"]
 |===
 |Step |Action
@@ -454,7 +467,7 @@ a|Start a transaction with link:https://dev.mysql.com/doc/refman/{mysql-version}
 [NOTE]
 ====
 The use of these isolation semantics can slow the progress of the snapshot.
-If the snapshot takes too long to complete, consider using a different isolation configuration, or skip the initial snapshot and run an xref:{context}-incremental-snapshots[incremental snapshot] instead.
+If the snapshot takes too long to complete, consider using a different isolation configuration, or skip the initial snapshot and run an xref:debezium-mysql-incremental-snapshots[incremental snapshot] instead.
 ====
 
 |5
@@ -521,7 +534,7 @@ For the connector to perform a snapshot that uses table-level locks, the databas
 
 .Default workflow that the {prodname} MySQL connector uses to perform an initial snapshot with table-level locks
 The following workflow lists the steps that {prodname} takes to create a snapshot with table-level read locks.
-For information about the snapshot process in environments that do not permit global read locks, see the xref:default-snapshot-workflow-with-global-read-lock[snapshot workflow for global read locks].
+For information about the snapshot process in environments that do not permit global read locks, see the xref:initial-snapshot-workflow-with-global-read-lock[snapshot workflow for global read locks].
 
 [id="snapshot-workflow-with-table-level-locks"]
 [cols="1,9",options="header",subs="+attributes"]
@@ -585,7 +598,7 @@ a|Record the successful completion of the snapshot in the connector offsets.
 
 |===
 
-// ModuleID: {context}-description-of-why-initial-snapshots-capture-the-schema-history-for-all-tables
+// ModuleID: mysql-description-of-why-initial-snapshots-capture-the-schema-history-for-all-tables
 // Title: Description of why initial snapshots capture the schema history for all tables
 // Type: concept
 [id="understanding-why-initial-snapshots-capture-the-schema-history-for-all-tables"]
@@ -610,7 +623,7 @@ This can be useful when you want to reduce the time required to complete a snaps
 Or when {prodname} connects to the database instance through a user account that has access to multiple logical databases, but you want the connector to capture changes only from tables in a specific logic database.
 
 .Additional information
-* xref:{context}-capturing-data-from-tables-not-captured-by-the-initial-snapshot[Capturing data from tables not captured by the initial snapshot (no schema change)]
+* xref:{context}-capturing-data-from-tables-not-captured-by-the-initial-snapshot-no-schema-change[Capturing data from tables not captured by the initial snapshot (no schema change)]
 * xref:{context}-capturing-data-from-new-tables-with-schema-changes[Capturing data from tables not captured by the initial snapshot (schema change)]
 * Setting the xref:{context}-property-database-history-store-only-captured-tables-ddl[`schema.history.internal.store.only.captured.tables.ddl`] property to specify the tables from which to capture schema information.
 * Setting the xref:{context}-property-database-history-store-only-captured-databases-ddl[`schema.history.internal.store.only.captured.databases.ddl`] property to specify the logical databases from which to capture schema changes.
@@ -643,7 +656,7 @@ For information about capturing data from a new table that has undergone structu
 This guarantees that in the future, the connector can reconstruct the schema history for all tables.
 4. Restart the connector.
 The snapshot recovery process rebuilds the schema history based on the current structure of the tables.
-5. (Optional) After the snapshot completes, initiate an xref:{context}-incremental-snapshots[incremental snapshot] to capture existing data for newly added tables along with changes to other tables that occurred while that connector was off-line.
+5. (Optional) After the snapshot completes, initiate an xref:debezium-mysql-incremental-snapshots[incremental snapshot] to capture existing data for newly added tables along with changes to other tables that occurred while that connector was off-line.
 6. (Optional) Reset the `snapshot.mode` back to `schema_only` to prevent the connector from initiating recovery after a future restart.
 
 // Type: procedure
@@ -666,7 +679,7 @@ You can add the schema by running a new schema snapshot, or by running an initia
 Initial snapshot captured the schema for all tables (`store.only.captured.tables.ddl` was set to `false`)::
 1. Edit the xref:{context}-property-table-include-list[`table.include.list`] property to specify the tables that you want to capture.
 2. Restart the connector.
-3. Initiate an xref:{context}-incremental-snapshots[incremental snapshot] if you want to capture existing data from the newly added tables.
+3. Initiate an xref:debezium-mysql-incremental-snapshots[incremental snapshot] if you want to capture existing data from the newly added tables.
 
 Initial snapshot did not capture the schema for all tables (`store.only.captured.tables.ddl` was set to `true`)::
 If the initial snapshot did not save the schema of the table that you want to capture, complete one of the following procedures:
@@ -690,7 +703,7 @@ This operation is potentially destructive, and should be performed only as a las
 5. Restart the connector.
 6. Wait for {prodname} to capture the schema of the new and existing tables.
 Data changes that occurred any tables after the connector stopped are not captured.
-7. To ensure that no data is lost, initiate an xref:{context}-incremental-snapshots[incremental snapshot].
+7. To ensure that no data is lost, initiate an xref:debezium-mysql-incremental-snapshots[incremental snapshot].
 
 Procedure 2: Initial snapshot, followed by optional incremental snapshot:::
 In this procedure the connector performs a full initial snapshot of the database.
@@ -714,32 +727,49 @@ This operation is potentially destructive, and should be performed only as a las
 6. Restart the connector.
 The connector takes a full database snapshot.
 After the snapshot completes, the connector transitions to streaming.
-7. (Optional) To capture any data that changed while the connector was off-line, initiate an xref:{context}-incremental-snapshots[incremental snapshot].
+7. (Optional) To capture any data that changed while the connector was off-line, initiate an xref:debezium-mysql-incremental-snapshots[incremental snapshot].
 
 // Type: concept
 // ModuleID: debezium-mysql-ad-hoc-snapshots
 [id="mysql-ad-hoc-snapshots"]
-==== Ad hoc snapshots
-include::{partialsdir}/modules/all-connectors/con-connector-ad-hoc-snapshots.adoc[leveloffset=+3]
+=== Ad hoc snapshots
 
+include::{partialsdir}/modules/all-connectors/con-connector-ad-hoc-snapshots.adoc[leveloffset=+1]
 
+// Type: assembly
+// ModuleID: debezium-mysql-incremental-snapshots
+[id="debezium-mysql-incremental-snapshots"]
+=== Incremental snapshots
 
-// Type: concept
-[id="mysql-incremental-snapshots"]
-==== Incremental snapshots
-include::{partialsdir}/modules/all-connectors/con-connector-incremental-snapshot.adoc[leveloffset=+3]
+include::{partialsdir}/modules/all-connectors/con-connector-incremental-snapshot.adoc[leveloffset=+1]
 
 // Type: procedure
+// ModuleID: debezium-mysql-triggering-an-incremental-snapshot
 [id="mysql-triggering-an-incremental-snapshot"]
 ==== Triggering an incremental snapshot
 
-include::{partialsdir}/modules/all-connectors/proc-triggering-an-incremental-snapshot-sql.adoc[leveloffset=+3]
+include::{partialsdir}/modules/all-connectors/proc-triggering-an-incremental-snapshot-sql.adoc[leveloffset=+1]
 
 // Type: procedure
+// ModuleID: debezium-mysql-using-the-kafka-signaling-channel-to-trigger-an-incremental-snapshot
+[id="mysql-triggering-an-incremental-snapshot-kafka"]
+==== Using the Kafka signaling channel to trigger an incremental snapshot
+
+include::{partialsdir}/modules/all-connectors/proc-triggering-an-incremental-snapshot-kafka.adoc[leveloffset=+1]
+
+// Type: procedure
+// ModuleID: debezium-mysql-stopping-an-incremental-snapshot
 [id="mysql-stopping-an-incremental-snapshot"]
 ==== Stopping an incremental snapshot
 
-include::{partialsdir}/modules/all-connectors/proc-stopping-an-incremental-snapshot-sql.adoc[leveloffset=+3]
+include::{partialsdir}/modules/all-connectors/proc-stopping-an-incremental-snapshot-sql.adoc[leveloffset=+1]
+
+// Type: procedure
+// ModuleID: debezium-mysql-using-the-kafka-signaling-channel-to-stop-an-incremental-snapshot
+[id="mysql-stopping-an-incremental-snapshot-kafka"]
+==== Using the Kafka signaling channel to stop an incremental snapshot
+
+include::{partialsdir}/modules/all-connectors/proc-stopping-an-incremental-snapshot-kafka.adoc[leveloffset=+1]
 
 ifdef::community[]
 [id="mysql-read-only-incremental-snapshots"]
@@ -2130,6 +2160,10 @@ mysql> SELECT variable_value as "BINARY LOGGING STATUS (log-bin) ::"
 FROM performance_schema.global_variables WHERE variable_name='log_bin';
 ----
 
+. If you run MySQL on Amazon RDS, you must enable automated backups for your database instance for binary logging to occur.
+If the database instance is not configured to perform automated backups, the binlog is disabled, even if you apply the settings described in the previous steps.
+
+
 [[binlog-configuration-properties-mysql-connector]]
 .Descriptions of MySQL binlog configuration properties
 [cols="1,4",options="header",subs="+attributes"]
@@ -3316,9 +3350,9 @@ By default, the following channels are available:
 * `kafka`
 * `file`
 * `jmx`
-
+ifdef::community[]
 Optionally, you can also implement a {link-prefix}:{link-signalling}#debezium-signaling-enabling-custom-signaling-channel[custom signaling channel].
-
+endif::community[]
 |[[mysql-property-notification-enabled-channels]]<<mysql-property-notification-enabled-channels, `+notification.enabled.channels+`>>
 |No default
 | List of notification channel names that are enabled for the connector.
@@ -3327,9 +3361,9 @@ By default, the following channels are available:
 * `sink`
 * `log`
 * `jmx`
-
+ifdef::community[]
 Optionally, you can also implement a {link-prefix}:{link-notification}#debezium-notification-custom-channel[custom notification channel].
-
+endif::community[]
 |[[mysql-property-incremental-snapshot-allow-schema-changes]]<<mysql-property-incremental-snapshot-allow-schema-changes, `+incremental.snapshot.allow.schema.changes+`>>
 |`false`
 | Allow schema changes during an incremental snapshot. When enabled the connector will detect schema change during an incremental snapshot and re-select a current chunk to avoid locking DDLs. +

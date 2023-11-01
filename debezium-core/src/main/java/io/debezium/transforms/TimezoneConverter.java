@@ -143,14 +143,13 @@ public class TimezoneConverter<R extends ConnectRecord<R>> implements Transforma
             handleExclude(value, table, topic);
         }
 
-        Struct updatedEnvelopeValue = handleEnvelopeValue(schema, value);
         return record.newRecord(
                 record.topic(),
                 record.kafkaPartition(),
                 record.keySchema(),
                 record.key(),
                 record.valueSchema(),
-                updatedEnvelopeValue,
+                record.value(),
                 record.timestamp(),
                 record.headers());
     }
@@ -338,7 +337,9 @@ public class TimezoneConverter<R extends ConnectRecord<R>> implements Transforma
             }
 
             if (shouldIncludeField && supportedLogicalType) {
-                handleValueForField(value, field);
+                if (value.get(field) != null) {
+                    handleValueForField(value, field);
+                }
             }
         }
     }
@@ -348,19 +349,6 @@ public class TimezoneConverter<R extends ConnectRecord<R>> implements Transforma
         Schema schema = field.schema();
         Object newValue = getTimestampWithTimezone(schema.name(), struct.get(fieldName));
         struct.put(fieldName, newValue);
-    }
-
-    private Struct handleEnvelopeValue(Schema schema, Struct value) {
-        final Struct updatedEnvelopeValue = new Struct(schema);
-        Struct updatedAfterValue = getStruct(value, Envelope.FieldName.AFTER);
-        Struct updatedBeforeValue = getStruct(value, Envelope.FieldName.BEFORE);
-        if (updatedAfterValue != null) {
-            updatedEnvelopeValue.put(Envelope.FieldName.AFTER, updatedAfterValue);
-        }
-        if (updatedBeforeValue != null) {
-            updatedEnvelopeValue.put(Envelope.FieldName.BEFORE, updatedBeforeValue);
-        }
-        return updatedEnvelopeValue;
     }
 
     private Struct getStruct(Struct struct, String structName) {

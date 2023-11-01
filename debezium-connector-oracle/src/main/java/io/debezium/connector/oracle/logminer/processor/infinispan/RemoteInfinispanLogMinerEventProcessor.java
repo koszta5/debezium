@@ -33,8 +33,8 @@ import io.debezium.connector.oracle.OracleConnectorConfig;
 import io.debezium.connector.oracle.OracleDatabaseSchema;
 import io.debezium.connector.oracle.OracleOffsetContext;
 import io.debezium.connector.oracle.OraclePartition;
-import io.debezium.connector.oracle.OracleStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.Scn;
+import io.debezium.connector.oracle.logminer.LogMinerStreamingChangeEventSourceMetrics;
 import io.debezium.connector.oracle.logminer.events.LogMinerEvent;
 import io.debezium.connector.oracle.logminer.processor.infinispan.marshalling.LogMinerEventMarshallerImpl;
 import io.debezium.connector.oracle.logminer.processor.infinispan.marshalling.TransactionMarshallerImpl;
@@ -51,7 +51,7 @@ import io.debezium.relational.TableId;
  *
  * @author Chris Cranford
  */
-public class RemoteInfinispanLogMinerEventProcessor extends AbstractInfinispanLogMinerEventProcessor implements CacheProvider {
+public class RemoteInfinispanLogMinerEventProcessor extends AbstractInfinispanLogMinerEventProcessor {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(RemoteInfinispanLogMinerEventProcessor.class);
 
@@ -75,7 +75,7 @@ public class RemoteInfinispanLogMinerEventProcessor extends AbstractInfinispanLo
                                                   OraclePartition partition,
                                                   OracleOffsetContext offsetContext,
                                                   OracleDatabaseSchema schema,
-                                                  OracleStreamingChangeEventSourceMetrics metrics) {
+                                                  LogMinerStreamingChangeEventSourceMetrics metrics) {
         super(context, connectorConfig, jdbcConnection, dispatcher, partition, offsetContext, schema, metrics);
 
         Configuration config = new ConfigurationBuilder()
@@ -179,6 +179,22 @@ public class RemoteInfinispanLogMinerEventProcessor extends AbstractInfinispanLo
             }
         }
         return Optional.ofNullable(transaction);
+    }
+
+    @Override
+    protected String getFirstActiveTransactionKey() {
+        try (CloseableIterator<String> iterator = transactionCache.keySet().iterator()) {
+            if (iterator.hasNext()) {
+                return iterator.next();
+            }
+        }
+        return null;
+    }
+
+    @Override
+    protected void purgeCache(Scn minCacheScn) {
+        removeIf(processedTransactionsCache.entrySet().iterator(), entry -> Scn.valueOf(entry.getValue()).compareTo(minCacheScn) < 0);
+        removeIf(schemaChangesCache.entrySet().iterator(), entry -> Scn.valueOf(entry.getKey()).compareTo(minCacheScn) < 0);
     }
 
     private Properties getHotrodClientProperties(OracleConnectorConfig connectorConfig) {

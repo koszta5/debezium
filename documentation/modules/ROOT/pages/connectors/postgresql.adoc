@@ -85,6 +85,8 @@ The connector relies on and reflects the PostgreSQL logical decoding feature, wh
 * Logical decoding does not support DDL changes. This means that the connector is unable to report DDL change events back to consumers.
 * Logical decoding replication slots are supported on only `primary` servers. When there is a cluster of PostgreSQL servers, the connector can run on only the active `primary` server. It cannot run on `hot` or `warm` standby replicas. If the `primary` server fails or is demoted, the connector stops. After the `primary` server has recovered, you can restart the connector. If a different PostgreSQL server has been promoted to `primary`, adjust the connector configuration before restarting the connector.
 
+Additionally, the `pgoutput` logical decoding output plug-in does not capture values for generated columns, resulting in missing data for these columns in the connector's output.
+
 xref:postgresql-when-things-go-wrong[Behavior when things go wrong] describes how the connector responds if there is a problem.
 ====
 
@@ -106,6 +108,8 @@ ifdef::product[]
 Details are in the following topics:
 
 * xref:how-debezium-postgresql-connectors-perform-database-snapshots[]
+* xref:debezium-postgresql-ad-hoc-snapshots[]
+* xref:debezium-postgresql-incremental-snapshots[]
 * xref:how-debezium-postgresql-connectors-stream-change-event-records[]
 * xref:default-names-of-kafka-topics-that-receive-debezium-postgresql-change-event-records[]
 * xref:debezium-postgresql-connector-generated-events-that-represent-transaction-boundaries[]
@@ -134,6 +138,15 @@ For more information about PostgreSQL logical replication security, see the link
 Most PostgreSQL servers are configured to not retain the complete history of the database in the WAL segments.
 This means that the PostgreSQL connector would be unable to see the entire history of the database by reading only the WAL.
 Consequently, the first time that the connector starts, it performs an initial _consistent snapshot_ of the database.
+
+ifdef::product[]
+You can find more information about snapshots in the following sections:
+
+* xref:debezium-postgresql-ad-hoc-snapshots[]
+* xref:debezium-postgresql-incremental-snapshots[]
+endif::product[]
+
+.Default workflow behavior of initial snapshots
 The default behavior for performing a snapshot consists of the following steps.
 You can change this behavior by setting the xref:postgresql-property-snapshot-mode[`snapshot.mode` connector configuration property] to a value other than `initial`.
 
@@ -180,12 +193,15 @@ endif::community[]
 // Type: concept
 // ModuleID: debezium-postgresql-ad-hoc-snapshots
 [id="postgresql-ad-hoc-snapshots"]
-==== Ad hoc snapshots
+=== Ad hoc snapshots
+
 include::{partialsdir}/modules/all-connectors/con-connector-ad-hoc-snapshots.adoc[leveloffset=+3]
 
-// Type: concept
+// Type: assembly
+// ModuleID: debezium-postgresql-incremental-snapshots
 [id="postgresql-incremental-snapshots"]
-==== Incremental snapshots
+=== Incremental snapshots
+
 include::{partialsdir}/modules/all-connectors/con-connector-incremental-snapshot.adoc[leveloffset=+1]
 
 [WARNING]
@@ -195,16 +211,32 @@ If a schema change is performed _before_ the incremental snapshot start but _aft
 ====
 
 // Type: procedure
+// ModuleID: debezium-postgresql-triggering-an-incremental-snapshot
 [id="postgresql-triggering-an-incremental-snapshot"]
 ==== Triggering an incremental snapshot
 
-include::{partialsdir}/modules/all-connectors/proc-triggering-an-incremental-snapshot-sql.adoc[leveloffset=+3]
+include::{partialsdir}/modules/all-connectors/proc-triggering-an-incremental-snapshot-sql.adoc[leveloffset=+1]
 
 // Type: procedure
+// ModuleID: debezium-postgresql-using-the-kafka-signaling-channel-to-trigger-an-incremental-snapshot
+[id="postgresql-triggering-an-incremental-snapshot-kafka"]
+==== Using the Kafka signaling channel to trigger an incremental snapshot
+
+include::{partialsdir}/modules/all-connectors/proc-triggering-an-incremental-snapshot-kafka.adoc[leveloffset=+1]
+
+// Type: procedure
+// ModuleID: debezium-postgresql-stopping-an-incremental-snapshot
 [id="postgresql-stopping-an-incremental-snapshot"]
 ==== Stopping an incremental snapshot
 
-include::{partialsdir}/modules/all-connectors/proc-stopping-an-incremental-snapshot-sql.adoc[leveloffset=+3]
+include::{partialsdir}/modules/all-connectors/proc-stopping-an-incremental-snapshot-sql.adoc[leveloffset=+1]
+
+// Type: procedure
+// ModuleID: debezium-postgresql-using-the-kafka-signaling-channel-to-stop-an-incremental-snapshot
+[id="postgresql-stopping-an-incremental-snapshot-kafka"]
+==== Using the Kafka signaling channel to stop an incremental snapshot
+
+include::{partialsdir}/modules/all-connectors/proc-stopping-an-incremental-snapshot-kafka.adoc[leveloffset=+1]
 
 ifdef::community[]
 [[postgresql-custom-snapshot]]
@@ -3436,27 +3468,27 @@ Use the following format to specify the collection name: +
 
 |[[postgresql-property-signal-enabled-channels]]<<postgresql-property-signal-enabled-channels, `+signal.enabled.channels+`>>
 |source
-| List of the signaling channel names that are enabled for the connector. 
+| List of the signaling channel names that are enabled for the connector.
 By default, the following channels are available:
 
 * `source`
 * `kafka`
 * `file`
 * `jmx`
-
+ifdef::community[]
 Optionally, you can also implement a {link-prefix}:{link-signalling}#debezium-signaling-enabling-custom-signaling-channel[custom signaling channel].
-
+endif::community[]
 |[[postgresql-property-notification-enabled-channels]]<<postgresql-property-notification-enabled-channels, `+notification.enabled.channels+`>>
 |No default
 | List of notification channel names that are enabled for the connector.
-By default, the following channels are available: 
+By default, the following channels are available:
 
 * `sink`
 * `log`
 * `jmx`
-
+ifdef::community[]
 Optionally, you can also implement a {link-prefix}:{link-notification}#debezium-notification-custom-channel[custom notification channel].
-
+endif::community[]
 |[[postgresql-property-incremental-snapshot-chunk-size]]<<postgresql-property-incremental-snapshot-chunk-size, `+incremental.snapshot.chunk.size+`>>
 |1024
 |The maximum number of rows that the connector fetches and reads into memory during an incremental snapshot chunk.

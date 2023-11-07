@@ -301,11 +301,10 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
     @Override
     protected int getTransactionEventCount(InfinispanTransaction transaction) {
         // todo: implement indexed keys when ISPN supports them
-        try (Stream<String> stream = getEventCache().keySet().stream()) {
-            return (int) stream.filter(k -> k.startsWith(transaction.getTransactionId() + "-")).count();
-        }
-        //TODO: enable our improvement
-        //return inMemoryPendingTransactionsCache.getNumPending(transaction.getTransactionId());
+        // try (Stream<String> stream = getEventCache().keySet().stream()) {
+        // return (int) stream.filter(k -> k.startsWith(transaction.getTransactionId() + "-")).count();
+        // }
+        return inMemoryPendingTransactionsCache.getNumPending(transaction.getTransactionId());
     }
 
     @Override
@@ -334,16 +333,14 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
 
         if (!minCacheScn.isNull()) {
             purgeCache(minCacheScn);
-            //TODO change ours
-            //getProcessedTransactionsCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getValue().getScn()).compareTo(minCacheScn) < 0);
-            //getSchemaChangesCache().entrySet().removeIf(entry -> Scn.valueOf(entry.getKey()).compareTo(minCacheScn) < 0);
 
-            //Instant expireTs = Instant.now().minusSeconds(60 * 60);
-            //long count = getProcessedTransactionsCache().entrySet().stream().filter(entry -> entry.getValue().getTs().isBefore(expireTs)).count();
-            //if (count > 0 ) {
-                //LOGGER.warn("Found {} expired items in processed transaction list. Removing them.", count);
-                //getProcessedTransactionsCache().entrySet().removeIf(entry -> entry.getValue().getTs().isBefore(expireTs));
-            //}
+            // TODO make this production ready
+            Instant expireTs = Instant.now().minusSeconds(60 * 60);
+            long count = getProcessedTransactionsCache().entrySet().stream().filter(entry -> entry.getValue().getTs().isBefore(expireTs)).count();
+            if (count > 0) {
+                LOGGER.warn("Found {} expired items in processed transaction list. Removing them.", count);
+                getProcessedTransactionsCache().entrySet().removeIf(entry -> entry.getValue().getTs().isBefore(expireTs));
+            }
         }
         else {
             getProcessedTransactionsCache().clear();

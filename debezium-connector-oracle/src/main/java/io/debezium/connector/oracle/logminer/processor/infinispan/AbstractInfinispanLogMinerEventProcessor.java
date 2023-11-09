@@ -48,7 +48,6 @@ import io.debezium.util.Loggings;
 public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractLogMinerEventProcessor<InfinispanTransaction> implements CacheProvider {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(AbstractInfinispanLogMinerEventProcessor.class);
-
     private final OracleConnection jdbcConnection;
     private final LogMinerStreamingChangeEventSourceMetrics metrics;
     private final OraclePartition partition;
@@ -66,6 +65,8 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
                                                     OraclePartition partition,
                                                     OracleOffsetContext offsetContext,
                                                     OracleDatabaseSchema schema,
+                                                    LogMinerStreamingChangeEventSourceMetrics metrics) {
+        super(context, connectorConfig, schema, partition, offsetContext, dispatcher, metrics, jdbcConnection);
                                                     LogMinerStreamingChangeEventSourceMetrics metrics) {
         super(context, connectorConfig, schema, partition, offsetContext, dispatcher, metrics);
         this.jdbcConnection = jdbcConnection;
@@ -169,11 +170,53 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
         }
         super.processRow(partition, row);
     }
-
-    @Override
-    public void abandonTransactions(Duration retention) throws InterruptedException {
-        // no-op, transactions are never abandoned
-    }
+    //
+    // @Override
+    // public void abandonTransactions(Duration retention) throws InterruptedException {
+    // if (!Duration.ZERO.equals(retention)) {
+    // Optional<Scn> lastScnToAbandonTransactions = getLastScnToAbandon(jdbcConnection, retention);
+    // if (lastScnToAbandonTransactions.isPresent()) {
+    // Scn thresholdScn = lastScnToAbandonTransactions.get();
+    // Scn smallestScn = getTransactionCacheMinimumScn();
+    // if (!smallestScn.isNull() && thresholdScn.compareTo(smallestScn) >= 0) {
+    // boolean first = true;
+    // Iterator<Map.Entry<String, InfinispanTransaction>> iterator = getTransactionCache().entrySet().iterator();
+    // while (iterator.hasNext()) {
+    // Map.Entry<String, InfinispanTransaction> entry = iterator.next();
+    // if (entry.getValue().getStartScn().compareTo(thresholdScn) <= 0) {
+    // if (first) {
+    // LOGGER.warn("All transactions with SCN <= {} will be abandoned.", thresholdScn);
+    // first = false;
+    // }
+    // LOGGER.warn("Transaction {} (start SCN {}, change time {}, redo thread {}, {} events) is being abandoned.",
+    // entry.getKey(), entry.getValue().getStartScn(), entry.getValue().getChangeTime(),
+    // entry.getValue().getRedoThreadId(), entry.getValue().getNumberOfEvents());
+    //
+    // abandonedTransactionsCache.add(entry.getKey());
+    // iterator.remove();
+    //
+    // metrics.addAbandonedTransactionId(entry.getKey());
+    // metrics.setActiveTransactions(transactionCache.size());
+    // }
+    // }
+    //
+    // // Update the oldest scn metric are transaction abandonment
+    // final Optional<MemoryTransaction> oldestTransaction = getOldestTransactionInCache();
+    // if (oldestTransaction.isPresent()) {
+    // metrics.setOldestScn(oldestTransaction.get().getStartScn());
+    // metrics.setOldestScnAge(oldestTransaction.get().getChangeTime());
+    // }
+    // else {
+    // metrics.setOldestScn(Scn.NULL);
+    // metrics.setOldestScnAge(null);
+    // }
+    //
+    // offsetContext.setScn(thresholdScn);
+    // }
+    // dispatcher.dispatchHeartbeatEvent(partition, offsetContext);
+    // }
+    // }
+    // }
 
     @Override
     protected boolean hasSchemaChangeBeenSeen(LogMinerEventRow row) {
@@ -329,6 +372,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
         }
 
         if (!minCacheScn.isNull()) {
+            abandonTransactions(getConfig().getLogMiningTransactionRetention());            
             purgeCache(minCacheScn);
         }
         else {
@@ -408,6 +452,11 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
             getEventCache().remove(transaction.getEventId(i));
         }
         inMemoryPendingTransactionsCache.remove(transaction.getTransactionId());
+    }
+
+    @Override
+    public Set<String> getAbandonedTransactionsCache() {
+        return null;
     }
 
     /**

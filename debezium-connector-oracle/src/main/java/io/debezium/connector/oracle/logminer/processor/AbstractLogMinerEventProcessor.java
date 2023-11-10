@@ -1418,19 +1418,19 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                             iterator.remove();
 
                             metrics.addAbandonedTransactionId(entry.getKey());
-                            metrics.setActiveTransactions(getTransactionCache().size());
+                            metrics.setActiveTransactionCount(getTransactionCache().size());
                         }
                     }
+
 
                     // Update the oldest scn metric are transaction abandonment
                     final Optional<T> oldestTransaction = getOldestTransactionInCache();
                     if (oldestTransaction.isPresent()) {
-                        metrics.setOldestScn(oldestTransaction.get().getStartScn());
-                        metrics.setOldestScnAge(oldestTransaction.get().getChangeTime());
+                        final T transaction = oldestTransaction.get();
+                        metrics.setOldestScnDetails(transaction.getStartScn(), transaction.getChangeTime());
                     }
                     else {
-                        metrics.setOldestScn(Scn.NULL);
-                        metrics.setOldestScnAge(null);
+                        metrics.setOldestScnDetails(Scn.NULL, null);
                     }
 
                     offsetContext.setScn(thresholdScn);

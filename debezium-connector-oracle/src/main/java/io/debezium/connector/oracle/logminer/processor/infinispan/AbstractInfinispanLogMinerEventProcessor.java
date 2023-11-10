@@ -15,6 +15,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -67,8 +68,6 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
                                                     OracleDatabaseSchema schema,
                                                     LogMinerStreamingChangeEventSourceMetrics metrics) {
         super(context, connectorConfig, schema, partition, offsetContext, dispatcher, metrics, jdbcConnection);
-                                                    LogMinerStreamingChangeEventSourceMetrics metrics) {
-        super(context, connectorConfig, schema, partition, offsetContext, dispatcher, metrics);
         this.jdbcConnection = jdbcConnection;
         this.metrics = metrics;
         this.partition = partition;
@@ -329,7 +328,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
                 // Add new event at eventId offset
                 LOGGER.trace("Transaction {}, adding event reference at key {}", transactionId, eventKey);
                 getEventCache().put(eventKey, eventSupplier.get());
-                metrics.calculateLagFromSource(row.getChangeTime());                
+                metrics.calculateLagFromSource(row.getChangeTime());
                 inMemoryPendingTransactionsCache.put(transaction.getTransactionId());
             }
             // When using Infinispan, this extra put is required so that the state is properly synchronized
@@ -343,7 +342,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
 
     @Override
     protected int getTransactionEventCount(InfinispanTransaction transaction) {
-    	//TODO this may not work after restart if ISPN is reloaded
+        // TODO this may not work after restart if ISPN is reloaded
         return inMemoryPendingTransactionsCache.getNumPending(transaction.getTransactionId());
     }
 
@@ -372,7 +371,7 @@ public abstract class AbstractInfinispanLogMinerEventProcessor extends AbstractL
         }
 
         if (!minCacheScn.isNull()) {
-            abandonTransactions(getConfig().getLogMiningTransactionRetention());            
+            abandonTransactions(getConfig().getLogMiningTransactionRetention());
             purgeCache(minCacheScn);
         }
         else {

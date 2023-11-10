@@ -1422,7 +1422,6 @@ public abstract class AbstractLogMinerEventProcessor<T extends AbstractTransacti
                         }
                     }
 
-
                     // Update the oldest scn metric are transaction abandonment
                     final Optional<T> oldestTransaction = getOldestTransactionInCache();
                     if (oldestTransaction.isPresent()) {

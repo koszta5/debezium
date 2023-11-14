@@ -8,7 +8,6 @@ package io.debezium.connector.oracle.logminer.processor.infinispan;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.Iterator;
